@@ -8,3 +8,8 @@ The environment was build/developed using VirtualBox on a Windows 11 Host Machin
 
 Infrastructure Components
 
+| Machine Name | Operating System |
+| DC01    | Windows Server 2022|
+|WIN10-CLIENT | Windows 10 |
+|Attacker | Kali Linux |
+|SIEM | Ubuntu 22.04|
