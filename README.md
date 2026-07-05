@@ -24,4 +24,4 @@ The environment was build/developed using VirtualBox on a Windows 11 Host Machin
 - No internet access during the attack simulations (This is temporaily enabled for updates and tool downloads)
 
 ### Logging Flow:
-Windows Even Logs + Sysmon -> Wazuh Agnet (on the windows host ) -> Wazuh Manager (on ubuntu) -> wazuh dashboar + Elasticsearch
+Windows Even Logs + Sysmon &rarr; Wazuh Agnet (on the windows host ) &rarr; Wazuh Manager (on ubuntu) &rarr; wazuh dashboar + Elasticsearch
