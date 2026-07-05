@@ -25,3 +25,4 @@ The environment was build/developed using VirtualBox on a Windows 11 Host Machin
 
 ### Logging Flow:
 Windows Even Logs + Sysmon &rarr; Wazuh Agnet (on the windows host ) &rarr; Wazuh Manager (on ubuntu) &rarr; wazuh dashboar + Elasticsearch
+
