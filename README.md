@@ -21,6 +21,7 @@ Due to technical restrictions inherent in the Azure for Students subscription (l
 -	Document the full SOC workflow: log collection → detection → automated notification 
 -	Maintain strict cost control within the $100 educational credit
 
+----
 
 ### 3. Core Stack
 Core stack:
@@ -31,9 +32,13 @@ Core stack:
 -	**Oracle Cloud Always Free Tier (Ampere VM, Ubuntu 22.04)** — the internet-facing	Linux host generating real Syslog/auth data
 -	**Azure Logic Apps** — SOAR-style automated detection and alerting
 
+----
+
 ### 4. Architecture 
 
 No traditional databases, queues or storage accounts were used beyond the log analytics workspace (which acts as the central log database). 
+
+----
 
 ### 5. Methodology
 Chosen Methodology: Hybrid Multi-Cloud with Azure Arc
@@ -42,6 +47,8 @@ Chosen Methodology: Hybrid Multi-Cloud with Azure Arc
 -	It allowed real Linux authentication telemetry to be collected without depending on restricted Azure VM SKUs. 
 -	Oracle Cloud Always Free tier provided a permanent, zero-cost Linux host. 
 -	The approach still fully satisfied the original project goals: multi-source capable SIEM, detection engineering, and SOAR.
+
+----
 
 ### 6. Implementation Summary
 
@@ -80,6 +87,8 @@ Attempted to deploy native Azure Windows and Linux virtual machines; Native Azur
 -	The playbook periodically executes the brute-force detection query – Action: Run the brute-force KQL query against the Log Analytics workspace
 -	When matching events are found, it sends an email notification to a designated “SOC” address. 
 -	This demonstrates automated alerting without requiring a fully functional Analytics rule UI (which had been migrated to the Microsoft Defender portal and was inaccessible due to Entra ID role limitations).
+
+----
 
 ### 7. KQL Queries, Results and Findings
 
@@ -266,6 +275,8 @@ The query shows failed SSH authentication activity from 10 source IPs in the las
 -	The activity is concentrated: the top 3 IPs account for 90 of 113 attempts.
 -	The log filters (auth / authpriv, plus Failed password / Invalid user) mean this is login failure evidence, not normal traffic.
 -	This looks more like hostile authentication probing than an application issue.
+
+----
 
 ### 8.	MITRE ATT&CK Mapping
 
