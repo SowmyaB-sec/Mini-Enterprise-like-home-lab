@@ -112,6 +112,23 @@ The query found 3 five-minute bursts of repeated authentication failures on linu
 -	A second burst had 15 failed attempts from 2 source IPs across 4 usernames.
 -	A smaller burst had 6 failed attempts from 1 source IP across 3 usernames.
 
+| Time bin (UTC)	| Computer	| Failed attempts	| Distinct users	| Usernames seen	 | Source IPs seen | 
+|------|-----|------|-------|-------|--------|
+|2026-08-07 14:55	| linux-siem-lab | 	42	| 10	| admin, oracle, usuario, test, user, ftpuser, test1, test2, pi, baikal	| ⬛⬛⬛⬛⬛⬛⬛⬛⬛⬛ |
+|2026-08-08 12:15	| linux-siem-lab	| 15 |	4	|  baduser, suser, juser, kuser	| ⬛⬛⬛⬛⬛⬛⬛⬛⬛⬛/⬛⬛⬛⬛⬛⬛⬛⬛⬛⬛ |
+| 2026-08-08 10:55	| linux-siem-lab|	6	| 3	| baduser, juser, suser	| ⬛⬛⬛⬛⬛⬛⬛⬛⬛⬛ |
+
+**Interpretation**
+-	This pattern is more consistent with automated password guessing or credential stuffing than with a single user mistyping a password.
+-	The first burst is especially notable because it tried many different usernames from one IP, which is a common sign of a scanning or brute-force pattern.
+-	The later bursts re-use some of the same usernames, suggesting the activity may be repeated probing rather than isolated noise.
+  
+**What this means operationally**
+-	If the host is internet-facing, these patterns would suggest potential intrusion attempts.
+-	If the host is internal-only, it could still indicate malicious lateral probing or a misconfigured automation job repeatedly authenticating with bad credentials.
+-	This query only shows failed auth events where a username could be extracted, so the true total could be higher if some messages didn’t match the parsing pattern.
+
+
 **2.	Detection - Successful Logins after failed Logins**
 
 ```
@@ -152,10 +169,109 @@ Syslog
     FirstFailure,
     SuccessfulLogin
 ```
-| Time bin (UTC)	| Computer	| Failed attempts	| Distinct users	| Usernames seen	 | Source IPs seen | 
-|------|-----|------|-------|-------|--------|
-|2026-08-07 14:55	| linux-siem-lab| 	42	| 10	| admin, oracle, usuario, test, user, ftpuser, test1, test2, pi, baikal	|  <mark style="color: black; background-color: black;">220.85.210.200</mark> |
-2026-08-08 12:15	linux-siem-lab	15	4	baduser, suser, juser, kuser	89.101.203.182 / 140.238.73.67
-2026-08-08 10:55	linux-siem-lab	6	3	baduser, juser, suser	89.101.203.182
+
+**What the query found**
+-	It returned 1 high-severity match on linux-siem-lab.
+-	The same source IP, ⬛⬛⬛⬛⬛⬛⬛⬛⬛⬛, generated 29 SSH failures before a successful login.
+-	Timing was notable as the failure and successful login happened with very little time difference. The first failure was at 2026-08-08 10:56:26 UTC, and the successful login happened at 2026-08-08 10:57:16 UTC.
+-	The failed usernames included juser, suser, and baduser.
+
+
+**Interpretion**
+-	This pattern is consistent with brute-force or credential-stuffing behavior, especially because success followed shortly after many failures from the same IP.
+-	One important thing to notice/remember is that the query correlates by computer + source IP, not by exact username, so the failed usernames and successful username may not be the same account.
+
+**3. Recent Failed Login Events**
+```
+Syslog
+| where TimeGenerated > ago(6h)
+| where Facility in ("auth", "authpriv")
+| where SyslogMessage has_any ("Failed password", "authentication failure", "Invalid user")
+| summarize FailedAttempts = count() by bin(TimeGenerated, 15m)
+| order by TimeGenerated asc
+```
+**What this query found**
+The executed query found 54 failed authentication attempts in the last 6 hours, spread across 5 non-empty 15-minute buckets.
+|UTC time bucket|	Failed attempts	|Interpretation|
+|-----|----|----|
+|10:45	| 12	 | Moderate burst of failures |
+|11:00	| 8 |	Still elevated |
+|11:15	|2	| Activity dropped off |
+| 11:30	|2	 | Low level continued|
+| 12:15	| 30	| Largest spike in the window |
+
+**Interpretation**
+-	This looks like repeated failed login activity, likely from one or more sources trying SSH or another auth path on the Linux host.
+-	Because the query only counted failures, it does not tell us whether any successful logins happened before or after these attempts.
+
+
+**4. Hunting Query**
+```
+Syslog
+| where Facility in ("auth", "authpriv")
+| where SyslogMessage has_any ("Failed password", "authentication failure", "Invalid user")
+| extend SourceIP = extract(@"from (\S+)", 1, SyslogMessage)
+| extend TargetUser = extract(@"for (invalid user )?(\S+)", 2, SyslogMessage)
+| summarize FailedAttempts = count(), Users = make_set(TargetUser), IPs = make_set(SourceIP) by Computer, bin(TimeGenerated, 5m)
+| where FailedAttempts >= 5
+| sort by FailedAttempts desc
+| extend Detection="Potential SSH Brute Force"
+| project TimeGenerated, Computer, FailedAttempts, Users, IPs
+```
+**What the query found**
+The results are consistent with repeated SSH login failures against linux-siem-lab over the last 24 hours, which is a common pattern for a brute-force or password-spraying attempt.
+
+|Time (UTC) | 	Computer	| Failed attempts|	Notable pattern|
+|----|------|-----|------|
+|2026-08-07 14:55	|linux-siem-lab	|68	| Largest burst; multiple usernames tried|
+| 2026-08-08 12:15	| linux-siem-lab |	30	| Two source IPs seen in the same 5-minute window|
+| 2026-08-07 13:05	| linux-siem-lab	| 12	| Multiple source IPs |
+| 2026-08-08 10:55	| linux-siem-lab	| 12	| Repeated source activity |
+| 2026-08-07 13:00 / 14:10 / 14:15 / 14:00 / 13:30 / 11:05 |	linux-siem-lab |	6 | each	Smaller but recurring clusters |
+
+**Interpretation**
+-	The 68-attempt spike with many usernames (admin, oracle, usuario, test, user, ftpuser, test1, test2) is the strongest indicator of automated credential guessing.
+-	The same host keeps appearing in multiple buckets, so this looks like persistent targeting, not a one-off typo or user mistake.
+-	The extracted Users and IPs fields include some empty/odd values because the regex pulls data directly from log text; that means the detection is useful, but the field parsing is a bit noisy.
+
+**5.	Top IP'S**
+```
+Syslog
+| where TimeGenerated > ago(24h)
+| where Facility in ("auth", "authpriv")
+| where SyslogMessage has_any ("Failed password", "Invalid user")
+| extend SourceIP = extract(@"from ([0-9\.]+)", 1, SyslogMessage)
+| where isnotempty(SourceIP)
+| summarize Attempts = count() by SourceIP
+| top 10 by Attempts
+| render barchart
+```
+The query shows failed SSH authentication activity from 10 source IPs in the last 24 hours, which is a common pattern for password spraying or brute-force probing.
+
+| Source IP	| Failed attempts |
+|------------|-----------|
+|⬛⬛⬛⬛⬛⬛⬛⬛⬛⬛|	42|
+|⬛⬛⬛⬛⬛⬛⬛⬛⬛⬛|	31 |
+|⬛⬛⬛⬛⬛⬛⬛⬛⬛⬛	| 17|
+|⬛⬛⬛⬛⬛⬛⬛⬛⬛⬛|	7|
+|⬛⬛⬛⬛⬛⬛⬛⬛⬛⬛	| 7|
+|⬛⬛⬛⬛⬛⬛⬛⬛⬛⬛|	5|
+|⬛⬛⬛⬛⬛⬛⬛⬛⬛⬛|	1 |
+| ⬛⬛⬛⬛⬛⬛⬛⬛⬛⬛|	1|
+|⬛⬛⬛⬛⬛⬛⬛⬛⬛⬛|	1|
+|⬛⬛⬛⬛⬛⬛⬛⬛⬛⬛|	1|
+
+**What the query means**
+-	The activity is concentrated: the top 3 IPs account for 90 of 113 attempts.
+-	The log filters (auth / authpriv, plus Failed password / Invalid user) mean this is login failure evidence, not normal traffic.
+-	This looks more like hostile authentication probing than an application issue.
+
+### 8.	MITRE ATT&CK Mapping
+
+| Technique ID	| Technique Name	| Implementation |
+|--------|----------|----------|
+|T1110|	Brute Force	|Custom KQL detection on failed SSH authentication |
+| T1078	| Valid Accounts	| Monitoring of successful logins after failures |
+| T1021.004	| Remote Services: SSH	| Primary attack surface monitored |
 
 
