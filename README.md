@@ -35,6 +35,7 @@ Core stack:
 ----
 
 ### 4. Architecture 
+<img width="742" height="1251" alt="Architecture diagram" src="https://github.com/user-attachments/assets/65cea7b0-057c-4d78-888a-55cb566f98ae" />
 
 No traditional databases, queues or storage accounts were used beyond the log analytics workspace (which acts as the central log database). 
 
@@ -117,6 +118,8 @@ Syslog
 | project TimeGenerated, Computer, FailedAttempts, DistinctUsers, Users, SourceIPs
 | sort by FailedAttempts desc
 ```
+<img width="302" height="513" alt="Query 1" src="https://github.com/user-attachments/assets/884b9bb1-cdc8-4e23-b911-303bba9bbb6c" />
+
 The query found 3 five-minute bursts of repeated authentication failures on linux-siem-lab.
 -	The largest spike was 42 failed attempts in one 5-minute window from 1 source IP, spread across 10 usernames.
 -	A second burst had 15 failed attempts from 2 source IPs across 4 usernames.
@@ -179,6 +182,7 @@ Syslog
     FirstFailure,
     SuccessfulLogin
 ```
+<img width="377" height="316" alt="Query 2" src="https://github.com/user-attachments/assets/5c0dc6a2-beae-493f-a208-ea62b56db895" />
 
 **What the query found**
 -	It returned 1 high-severity match on linux-siem-lab.
@@ -200,6 +204,11 @@ Syslog
 | summarize FailedAttempts = count() by bin(TimeGenerated, 15m)
 | order by TimeGenerated asc
 ```
+<img width="286" height="242" alt="Query 3-1" src="https://github.com/user-attachments/assets/3b1ff32b-8142-4422-846e-7ac9c52f08c4" />
+
+<img width="1398" height="511" alt="Query 3-2" src="https://github.com/user-attachments/assets/d2014321-4169-4889-8836-afd2be2ec19c" />
+
+
 **What this query found**
 The executed query found 54 failed authentication attempts in the last 6 hours, spread across 5 non-empty 15-minute buckets.
 |UTC time bucket|	Failed attempts	|Interpretation|
@@ -228,6 +237,12 @@ Syslog
 | extend Detection="Potential SSH Brute Force"
 | project TimeGenerated, Computer, FailedAttempts, Users, IPs
 ```
+
+<img width="1020" height="370" alt="Query 4-1" src="https://github.com/user-attachments/assets/3fec1216-c945-4271-b3f6-13af068e2f42" />
+
+<img width="1305" height="430" alt="Query 4-2" src="https://github.com/user-attachments/assets/0cdc733f-45eb-4d65-892a-c135d8804772" />
+
+
 **What the query found**
 The results are consistent with repeated SSH login failures against linux-siem-lab over the last 24 hours, which is a common pattern for a brute-force or password-spraying attempt.
 
@@ -256,6 +271,13 @@ Syslog
 | top 10 by Attempts
 | render barchart
 ```
+
+<img width="230" height="338" alt="Query 5-1" src="https://github.com/user-attachments/assets/d5127e85-b96e-4ada-8489-966c738f8862" />
+
+<img width="1209" height="422" alt="Query 5-2" src="https://github.com/user-attachments/assets/2dbbde29-9236-4fee-ac5b-61007366c0b9" />
+
+
+
 The query shows failed SSH authentication activity from 10 source IPs in the last 24 hours, which is a common pattern for password spraying or brute-force probing.
 
 | Source IP	| Failed attempts |
@@ -278,7 +300,41 @@ The query shows failed SSH authentication activity from 10 source IPs in the las
 
 ----
 
-### 8.	MITRE ATT&CK Mapping
+### 8. Automated Response - Azure Logic App (SOAR)
+
+An Azure Logic App (Consumption plan) was created to act as the automated response playbook. The playbook was designed with the following logic:
+
+**1. Trigger**  
+   A Recurrence trigger was configured to run the playbook at regular intervals (every 10 minutes during testing).
+
+**2. Data Retrieval**
+   The playbook executes a KQL query against the Log Analytics workspace to retrieve recent failed SSH authentication events that meet the brute-force threshold (≥ 5 failed attempts within a 5-minute window).
+
+**3. Condition Evaluation**
+   A Condition control was added to evaluate the query results:
+   - *If* the query returns one or more matching records (i.e., a potential brute-force attack is detected),
+   - *Then* proceed to the notification action.
+   - *Else* take no further action (to avoid alert fatigue).
+
+**4.Automated Response Action**  
+   When the condition evaluates to true, the playbook sends an email notification to a designated SOC analyst address. The email contains a clear subject line and body indicating that Linux SSH brute-force activity has been detected and requires investigation.
+ 
+ <img width="526" height="669" alt="Logic Apps designer" src="https://github.com/user-attachments/assets/84831788-1559-4981-8e46-bf5290b35c26" />
+
+ <img width="497" height="469" alt="Recurrence" src="https://github.com/user-attachments/assets/d8355ced-8861-466f-82a5-bc7a8d514bb9" />
+
+ <img width="561" height="545" alt="Query code" src="https://github.com/user-attachments/assets/c4b8749b-4f47-4f77-b035-caa0fbd97f75" />
+
+
+
+
+**Why This Approach?**
+- Demonstrates real SOAR principles: *orchestration* (querying Sentinel data), *automation* (scheduled execution + conditional logic), and *response* (email notification).
+- Works even though the full Microsoft Sentinel Analytics / Automation Rules interface was restricted due to portal migration and permission limitations.
+- Keeps the solution cost-effective (Logic Apps Consumption plan only incurs charges when the playbook runs).
+
+----
+### 9.	MITRE ATT&CK Mapping
 
 | Technique ID	| Technique Name	| Implementation |
 |--------|----------|----------|
