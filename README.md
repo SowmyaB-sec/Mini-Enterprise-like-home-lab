@@ -10,6 +10,7 @@ This project involved designing and implementing a realistic and practical Secur
 
 Due to technical restrictions inherent in the Azure for Students subscription (limited VM SKUs and regional availability), a hybrid multi-cloud approach was adopted. A free-tier Ubuntu virtual machine hosted on Oracle Cloud Infrastructure was onboarded into Azure using Azure Arc, allowing authentic Linux authentication logs to be collected and analysed within Microsoft Sentinel.
  
+----
 
 ### 2. Objectives
 -	Deploy Microsoft Sentinel on a cost-controlled Log Analytics workspace 
